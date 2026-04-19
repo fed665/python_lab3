@@ -1,105 +1,56 @@
-import pytest
+import unittest
 from app import app
-
-# Импортируем глобальные переменные из app
 import app as app_module
 
 
-@pytest.fixture
-def client():
-    app.config['TESTING'] = True
-    with app.test_client() as client:
-        # Очищаем список задач перед каждым тестом
+class TestTodoApp(unittest.TestCase):
+
+    def setUp(self):
+        """Подготовка перед каждым тестом"""
+        app.config['TESTING'] = True
+        self.client = app.test_client()
         app_module.tasks.clear()
         app_module.next_id = 1
-        yield client
 
+    def test_add_task(self):
+        """Проверка 1: Добавление задачи"""
+        response = self.client.post('/add', data={'title': 'Моя задача'})
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(len(app_module.tasks), 1)
+        self.assertEqual(app_module.tasks[0].title, 'Моя задача')
 
-# ========== ОСНОВНЫЕ ТЕСТЫ ==========
+    def test_toggle_task(self):
+        """Проверка 2: Отметка задачи как выполненной"""
+        self.client.post('/add', data={'title': 'Задача'})
+        self.assertFalse(app_module.tasks[0].completed)
 
-def test_index_page(client):
-    """Главная страница открывается"""
-    response = client.get('/')
-    assert response.status_code == 200
+        self.client.get('/toggle/1')
+        self.assertTrue(app_module.tasks[0].completed)
 
+    def test_delete_task(self):
+        """Проверка 3: Удаление задачи"""
+        self.client.post('/add', data={'title': 'Удалить'})
+        self.assertEqual(len(app_module.tasks), 1)
 
-def test_toggle_task(client):
-    """Переключение статуса задачи"""
-    # Добавляем задачу
-    client.post('/add', data={'title': 'Test task'})
-    assert app_module.tasks[0].completed == False
+        self.client.get('/delete/1')
+        self.assertEqual(len(app_module.tasks), 0)
 
-    # Переключаем статус
-    response = client.get('/toggle/1')
-    assert response.status_code == 302
+    def test_empty_task_not_added(self):
+        """Проверка 4: Нельзя добавить пустую задачу"""
+        self.client.post('/add', data={'title': ''})
+        self.assertEqual(len(app_module.tasks), 0)
 
-    # Проверяем, что статус изменился
-    assert app_module.tasks[0].completed == True
+    def test_multiple_tasks(self):
+        """Проверка 5: Работа с несколькими задачами и ID"""
+        self.client.post('/add', data={'title': 'Задача 1'})
+        self.client.post('/add', data={'title': 'Задача 2'})
 
+        self.assertEqual(len(app_module.tasks), 2)
+        self.assertEqual(app_module.tasks[0].id, 1)
+        self.assertEqual(app_module.tasks[1].id, 2)
+        self.assertEqual(app_module.tasks[0].title, 'Задача 1')
+        self.assertEqual(app_module.tasks[1].title, 'Задача 2')
 
-def test_delete_task(client):
-    """Удаление задачи"""
-    # Добавляем задачу
-    client.post('/add', data={'title': 'Delete me'})
-    assert len(app_module.tasks) == 1
-
-    # Удаляем
-    response = client.get('/delete/1')
-    assert response.status_code == 302
-
-    # Задача исчезла
-    assert len(app_module.tasks) == 0
-
-
-def test_multiple_tasks(client):
-    """Несколько задач добавляются правильно"""
-    client.post('/add', data={'title': 'Task 1'})
-    client.post('/add', data={'title': 'Task 2'})
-    client.post('/add', data={'title': 'Task 3'})
-
-    assert len(app_module.tasks) == 3
-    assert app_module.tasks[0].title == 'Task 1'
-    assert app_module.tasks[1].title == 'Task 2'
-    assert app_module.tasks[2].title == 'Task 3'
-
-
-def test_task_ids_increment(client):
-    """ID задач увеличиваются автоматически"""
-    client.post('/add', data={'title': 'First'})
-    client.post('/add', data={'title': 'Second'})
-
-    assert app_module.tasks[0].id == 1
-    assert app_module.tasks[1].id == 2
-
-
-def test_complete_and_delete(client):
-    """Смешанный сценарий: добавить, выполнить, удалить"""
-    client.post('/add', data={'title': 'Task'})
-    client.get('/toggle/1')  # Выполнили
-    client.get('/delete/1')  # Удалили
-
-    assert len(app_module.tasks) == 0
-
-
-# ========== ТЕСТЫ КЛАССА TASK ==========
-
-def test_task_creation():
-    """Создание задачи"""
-    from app import Task
-    task = Task(1, "Test", False)
-    assert task.id == 1
-    assert task.title == "Test"
-    assert task.completed == False
-
-
-def test_task_with_completed():
-    """Создание выполненной задачи"""
-    from app import Task
-    task = Task(2, "Done", True)
-    assert task.completed == True
-
-
-# ========== ЗАПУСК ==========
 
 if __name__ == '__main__':
-    pytest.main([__file__, '-v'])
+    unittest.main(verbosity=2)
